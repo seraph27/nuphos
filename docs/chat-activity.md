@@ -25,17 +25,18 @@ failures and approvals visible, including interrupted turns and structured
 nonzero exit codes. SessionFindBar explains how to search collapsed activity.
 Continued ordered Markdown lists keep their starting number.
 
-The screenshots use light-theme production components with neutral synthetic
-transcript/tool fixtures, not installed-app captures. Both columns receive the
-same event stream, use matching widths and start at the top. Before text is
-shown in full without a fixed-height scroller. Expanding Activity is checked
-against the original text and message identities. Both 390px mobile views are
-shown together at their original scale.
+Evidence now uses the full Electron application: unchanged baseline42d7757 and this feature branch, each loading the same neutral seeded transcript through a real local backend/database and desktop IPC. Both1280×1040views are scrolled to the top. No tools were executed by the seeded transcript; the recording exercises the actual Activity controls. There are no added labels, readouts or overlays.
 
-The frozen before chat components and styles match base 5378a89; the after
-components are from 05d8e71. This evidence revision changes no application code.
-No product or real conversation content appears.
+Native checks in light and dark confirm one Activity row, all four progress messages and tool identities restored on expansion, and continued list numbering3–4 instead of1–2. The full-app check exposed a nested disclosure bug: a Journal tool target could remain hidden inside a closed tool group after Activity opened. Tool groups now use the same disclosure contract, and lookup opens each closed owner before scrolling to the real target. Two new focused regressions and the actual app check cover this path.
 
-![Running work before and after](images/chat-activity/activity-before-after.png)
-![Continued numbering before and after](images/chat-activity/numbering-before-after.png)
-![390px before and after](images/chat-activity/activity-mobile.png)
+This is presentation grouping, not a fix for runtime turn segmentation tracked separately in issue704. It does not reduce generated text or promise every conversation will be concise. Unknown phases, errors, pending approvals, cards and files retain their conservative behavior.
+
+Before is left, after is right.
+
+![Light mode](images/chat-activity/light-comparison.png)
+
+![Dark mode](images/chat-activity/dark-comparison.png)
+
+[Native expand/collapse recording](images/chat-activity/activity-app.gif)
+
+[Full light before](images/chat-activity/light-before.png) · [Full light after](images/chat-activity/light-after.png) · [Full dark before](images/chat-activity/dark-before.png) · [Full dark after](images/chat-activity/dark-after.png)
