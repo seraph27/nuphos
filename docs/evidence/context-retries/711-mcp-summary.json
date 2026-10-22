@@ -1,0 +1,16 @@
+[
+  {
+    "side": "before",
+    "httpStatus": 200,
+    "tool": "read_conversation",
+    "includesUserCorrection": false,
+    "toolError": false
+  },
+  {
+    "side": "after",
+    "httpStatus": 200,
+    "tool": "read_conversation",
+    "includesUserCorrection": true,
+    "toolError": false
+  }
+]

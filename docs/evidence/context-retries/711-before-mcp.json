@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"session_id\": \"57ff0000-0000-4000-8000-000000000810\",\n  \"title\": \"Example requirements\",\n  \"created_at\": \"2026-10-22T03:17:56.072Z\",\n  \"message_count\": 2,\n  \"turn_diagnostics\": [],\n  \"transcript\": \"#0 user: Make the example button blue.\\n#1 assistant: I will use blue.\\nI will check the requested colour before finishing.\",\n  \"next_index\": null\n}"
+      }
+    ],
+    "structuredContent": {
+      "session_id": "57ff0000-0000-4000-8000-000000000810",
+      "title": "Example requirements",
+      "created_at": "2026-10-22T03:17:56.072Z",
+      "message_count": 2,
+      "turn_diagnostics": [],
+      "transcript": "#0 user: Make the example button blue.\n#1 assistant: I will use blue.\nI will check the requested colour before finishing.",
+      "next_index": null
+    }
+  }
+}

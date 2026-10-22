@@ -1,0 +1,10 @@
+{
+  "side": "before",
+  "realMongoDB": true,
+  "persistedUserInputs": 1,
+  "retryAttempt": 1,
+  "registeredRetryRun": false,
+  "turnStartContainsInput": false,
+  "claimReleasedBeforeHandoff": true,
+  "modelExecutionVerified": false
+}
