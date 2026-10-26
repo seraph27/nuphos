@@ -5,6 +5,7 @@ type Transport = {
   write: (selection: SessionConfigSelection) => Promise<SessionConfigState>
 }
 export type ConfigSnapshot = {
+  optimistic?: SessionConfigSelection
   queued?: SessionConfigSelection[]
   data?: SessionConfigState
   loading: boolean
@@ -21,6 +22,7 @@ export class SessionConfigSync {
   private streaming = false
   private active = false
   private version = 0
+  private pendingEffort?: SessionConfigSelection
   private pending = false
   private failures = 0
   private poll?: ReturnType<typeof setTimeout>
@@ -52,6 +54,8 @@ export class SessionConfigSync {
       this.active = false
       ++this.version
       this.pending = false
+      this.pendingEffort = undefined
+      this.publish({ saving: false, optimistic: undefined })
       clearTimeout(this.poll)
       clearTimeout(this.slowTimer)
     }
@@ -133,8 +137,19 @@ export class SessionConfigSync {
   }
 
   async select(selection: SessionConfigSelection) {
+    const option = this.snapshot.data?.options.find((value) => value.id === selection.configId)
+    const effort = option?.kind === 'effort'
+
+    if (effort && !option.options.some((value) => value.value === selection.value)) return
+    if (this.active && effort && this.snapshot.saving && this.snapshot.optimistic) {
+      this.pendingEffort = selection
+      this.publish({ optimistic: selection })
+
+      return
+    }
     if (this.active && (this.streaming || this.snapshot.data?.status === 'busy')) {
       this.publish({
+        optimistic: undefined,
         queued: [
           ...(this.snapshot.queued ?? []).filter(
             (pending) => pending.configId !== selection.configId,
@@ -157,7 +172,12 @@ export class SessionConfigSync {
     clearTimeout(this.poll)
     clearTimeout(this.slowTimer)
     this.pending = false
-    this.publish({ saving: true, slow: false, error: undefined })
+    this.publish({
+      saving: true,
+      slow: false,
+      error: undefined,
+      optimistic: effort ? selection : undefined,
+    })
     try {
       const data = await bounded(this.transport.write(selection), 40_000)
 
@@ -166,13 +186,22 @@ export class SessionConfigSync {
       if (this.active && version === this.version)
         this.publish({
           queued: undefined,
+          optimistic: undefined,
           error: 'The change was not confirmed. Checking the current settings.',
         })
     } finally {
       if (this.active && version === this.version) {
-        this.publish({ saving: false })
-        // Readback after a failed/lost acknowledgement must precede another write.
-        void this.refresh()
+        const next = this.snapshot.error ? undefined : this.pendingEffort
+
+        this.pendingEffort = undefined
+        this.publish({ saving: false, optimistic: next })
+        const current = this.snapshot.data?.options.find((option) => option.id === next?.configId)
+
+        if (next && current?.currentValue !== next.value) void this.select(next)
+        else {
+          this.publish({ optimistic: undefined })
+          void this.refresh()
+        }
       }
     }
   }

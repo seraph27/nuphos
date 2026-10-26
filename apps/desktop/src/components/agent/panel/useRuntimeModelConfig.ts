@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 
 import { api } from '../../../api'
 
+import { optimisticEffort } from './optimisticEffort'
+
 import type { ModelControl } from './ModelSelector'
 import type { SessionConfigPick, SessionConfigState } from '../../../api/session-config-types'
 
@@ -57,6 +59,7 @@ export function useRuntimeModelConfig(
     saving: Boolean(shown) && pending,
     error: pending ? undefined : shown?.error,
     queued: undefined,
+    optimistic: pending ? optimisticEffort(shown?.data, pick) : undefined,
     open,
     setOpen: (next: boolean) => {
       setOpen(next)

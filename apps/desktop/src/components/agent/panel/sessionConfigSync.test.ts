@@ -296,3 +296,158 @@ test('a dormant session that listed its choices is not polled; one that listed n
   await flush()
   assert.equal(reads, 3)
 })
+
+const effortReady = (value: string): SessionConfigState => ({
+  ...ready('model'),
+  options: [
+    ...ready('model').options,
+    {
+      id: 'effort',
+      name: 'Effort',
+      kind: 'effort',
+      currentValue: value,
+      options: ['low', 'medium', 'high', 'xhigh'].map((value) => ({ value, name: value })),
+    },
+  ],
+})
+
+test('effort updates immediately and coalesces rapid picks behind one in-flight write', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const first = deferred<SessionConfigState>()
+  const second = deferred<SessionConfigState>()
+  const writes: string[] = []
+  let confirmed = effortReady('low')
+  const sync = new SessionConfigSync({
+    read: async () => confirmed,
+    write: (selection) => {
+      writes.push(selection.value)
+
+      return writes.length === 1 ? first.promise : second.promise
+    },
+  })
+
+  t.after(sync.start())
+  await flush()
+  const selecting = sync.select({ configId: 'effort', value: 'high' })
+
+  assert.equal(sync.getSnapshot().optimistic?.value, 'high')
+  assert.equal(sync.getSnapshot().data?.options[1].currentValue, 'low')
+  await sync.select({ configId: 'effort', value: 'medium' })
+  await sync.select({ configId: 'effort', value: 'xhigh' })
+  assert.deepEqual(writes, ['high'])
+  assert.equal(sync.getSnapshot().optimistic?.value, 'xhigh')
+  confirmed = effortReady('high')
+  first.resolve(confirmed)
+  await selecting
+  await flush()
+  assert.deepEqual(writes, ['high', 'xhigh'])
+  assert.equal(sync.getSnapshot().optimistic?.value, 'xhigh')
+  confirmed = effortReady('xhigh')
+  second.resolve(confirmed)
+  await flush()
+  assert.equal(sync.getSnapshot().optimistic, undefined)
+  assert.equal(sync.getSnapshot().data?.options[1].currentValue, 'xhigh')
+  assert.equal(sync.getSnapshot().saving, false)
+})
+
+test('failed effort clears the optimistic pick and reads back before another write', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const write = deferred<SessionConfigState>()
+  const readback = deferred<SessionConfigState>()
+  let reads = 0
+  const sync = new SessionConfigSync({
+    read: () => (++reads === 1 ? Promise.resolve(effortReady('low')) : readback.promise),
+    write: () => write.promise,
+  })
+
+  t.after(sync.start())
+  await flush()
+  const selecting = sync.select({ configId: 'effort', value: 'high' })
+
+  await sync.select({ configId: 'effort', value: 'xhigh' })
+  write.reject(new Error('Connection lost'))
+  await selecting
+  assert.equal(sync.getSnapshot().optimistic, undefined)
+  assert.equal(sync.getSnapshot().data?.options[1].currentValue, 'low')
+  assert.match(sync.getSnapshot().error!, /not confirmed/)
+  readback.resolve(effortReady('high'))
+  await flush()
+  assert.equal(sync.getSnapshot().data?.options[1].currentValue, 'high')
+})
+
+test('unsupported effort values never become an optimistic selection', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let writes = 0
+  const sync = new SessionConfigSync({
+    read: async () => effortReady('low'),
+    write: async () => {
+      writes++
+
+      return effortReady('low')
+    },
+  })
+
+  t.after(sync.start())
+  await flush()
+  await sync.select({ configId: 'effort', value: 'invented' })
+  assert.equal(sync.getSnapshot().optimistic, undefined)
+  assert.equal(writes, 0)
+})
+
+test('effort picks move to the next reply queue when streaming begins during a save', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const first = deferred<SessionConfigState>()
+  const writes: string[] = []
+  let state = effortReady('low')
+  const sync = new SessionConfigSync({
+    read: async () => state,
+    write: async (selection) => {
+      writes.push(selection.value)
+      if (writes.length === 1) return first.promise
+      state = effortReady(selection.value)
+
+      return state
+    },
+  })
+
+  t.after(sync.start())
+  await flush()
+  const selecting = sync.select({ configId: 'effort', value: 'high' })
+
+  await sync.select({ configId: 'effort', value: 'xhigh' })
+  sync.setStreaming(true)
+  state = effortReady('high')
+  first.resolve(state)
+  await selecting
+  assert.equal(sync.getSnapshot().optimistic, undefined)
+  assert.equal(sync.getSnapshot().queued?.[0]?.value, 'xhigh')
+  await sync.select({ configId: 'effort', value: 'low' })
+  assert.equal(sync.getSnapshot().optimistic, undefined)
+  assert.equal(sync.getSnapshot().queued?.[0]?.value, 'low')
+  sync.setStreaming(false)
+  await flush()
+  assert.deepEqual(writes, ['high', 'low'])
+  assert.equal(sync.getSnapshot().data?.options[1].currentValue, 'low')
+})
+
+test('an effort write timeout restores server state and ignores a late acknowledgement', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const write = deferred<SessionConfigState>()
+  const sync = new SessionConfigSync({
+    read: async () => effortReady('low'),
+    write: () => write.promise,
+  })
+
+  t.after(sync.start())
+  await flush()
+  const selecting = sync.select({ configId: 'effort', value: 'xhigh' })
+
+  t.mock.timers.tick(40_000)
+  await selecting
+  await flush()
+  assert.equal(sync.getSnapshot().optimistic, undefined)
+  assert.equal(sync.getSnapshot().data?.options[1].currentValue, 'low')
+  write.resolve(effortReady('xhigh'))
+  await flush()
+  assert.equal(sync.getSnapshot().data?.options[1].currentValue, 'low')
+})

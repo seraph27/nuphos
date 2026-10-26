@@ -66,6 +66,7 @@ export function ModelEffortPanel({
   resetValue,
   blocked,
   saving,
+  optimistic = false,
   sliderRef,
   onSelect,
   onOpenModels,
@@ -76,8 +77,10 @@ export function ModelEffortPanel({
   resetValue?: string
   /** No changes at all, e.g. the agent is offline. */
   blocked: boolean
-  /** A change is being saved; the slider and reset are disabled until it ends. */
+  /** A change is being saved; unrelated controls stay disabled until it ends. */
   saving: boolean
+  /** Effort picks can replace a pending effort change. */
+  optimistic?: boolean
   sliderRef?: React.Ref<HTMLInputElement>
   onSelect: (configId: string, value: string) => void
   onOpenModels?: () => void
@@ -137,7 +140,7 @@ export function ModelEffortPanel({
         <Tooltip content={resetHint} triggerClassName="absolute right-1.5 top-1.5">
           <IconButton
             label={resetHint}
-            inert={blocked || saving || resetValue === effort.currentValue}
+            inert={blocked || (saving && !optimistic) || resetValue === effort.currentValue}
             onClick={() => onSelect(effort.id, resetValue)}
             className="text-tertiary"
           >
@@ -170,8 +173,8 @@ export function ModelEffortPanel({
         max={Math.max(stops.length - 1, 1)}
         step={1}
         thumbAlignment="edge"
-        // A session ignores writes while one is saving, so hold the slider still.
-        disabled={blocked || saving || stops.length < 2}
+        // Effort writes coalesce; model and fast-mode writes still wait for confirmation.
+        disabled={blocked || (saving && !optimistic) || stops.length < 2}
         onValueChange={(value) => setDraft({ index: value, from: effort.currentValue })}
         onValueCommitted={(value) => {
           const stop = stops[value]

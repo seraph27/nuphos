@@ -26,7 +26,7 @@ import type { useSessionConfig } from './useSessionConfig'
 
 export type ModelControl = Pick<
   ReturnType<typeof useSessionConfig>,
-  'data' | 'loading' | 'slow' | 'saving' | 'error' | 'queued' | 'open' | 'select'
+  'data' | 'loading' | 'slow' | 'saving' | 'error' | 'queued' | 'optimistic' | 'open' | 'select'
 > & { setOpen: (open: boolean) => void; refresh: () => void }
 
 export function ModelSelector({
@@ -45,13 +45,17 @@ export function ModelSelector({
   const sliderRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const options = data?.options.map((option) => {
-    const queued = control.queued?.find((selection) => selection.configId === option.id)
+    const queued =
+      control.optimistic?.configId === option.id
+        ? control.optimistic
+        : control.queued?.find((selection) => selection.configId === option.id)
 
     return queued ? { ...option, currentValue: queued.value } : option
   })
   const model = options?.find((option) => option.kind === 'model')
   const effort = options?.find((option) => option.kind === 'effort')
   const fast = options?.find((option) => option.kind === 'fast')
+  const savingEffort = control.optimistic?.configId === effort?.id && Boolean(control.optimistic)
   const status = data?.status
   const busy = status === 'busy'
   let name = slow ? 'Connecting…' : 'Model settings'
@@ -64,7 +68,7 @@ export function ModelSelector({
   ].filter(Boolean)
   const blocked =
     disabled ||
-    saving ||
+    (saving && !savingEffort) ||
     Boolean(error) ||
     slow ||
     (status !== 'ready' && status !== 'dormant' && status !== 'busy')
@@ -165,6 +169,7 @@ export function ModelSelector({
           <Popover.Trigger
             ref={chipRef}
             data-model-chip=""
+            aria-busy={saving || undefined}
             aria-label={`Model settings: ${[name, level].filter(Boolean).join(' ')}${fast?.currentValue === 'on' ? ', fast mode on' : ''}`}
             // A filled pill at rest, so opening it changes nothing but the text.
             className={clsx(
@@ -172,7 +177,7 @@ export function ModelSelector({
               'flex min-w-0 max-w-64 items-center gap-1 rounded-full px-2 text-[13px] text-main outline-none transition-colors hover:bg-zGray-800 focus-visible:bg-zGray-800',
             )}
           >
-            {saving && <Loader2 className="h-3 w-3 shrink-0 animate-spin" />}
+            {saving && !savingEffort && <Loader2 className="h-3 w-3 shrink-0 animate-spin" />}
             <ModelChipLabel
               name={name}
               loading={loading && !slow && !error && !data}
@@ -209,6 +214,7 @@ export function ModelSelector({
                   resetValue={effortResetValue(effort.options)}
                   blocked={blocked && !saving}
                   saving={saving}
+                  optimistic={savingEffort}
                   sliderRef={sliderRef}
                   onSelect={select}
                   onOpenModels={() => setView('models')}
@@ -247,7 +253,7 @@ export function ModelSelector({
           {model && (
             <ModelMenu
               model={model}
-              blocked={blocked}
+              blocked={blocked || saving}
               onSelect={pickModel}
               onBack={effort ? () => setView('effort') : undefined}
               footer={<ModelMenuFooter {...footer} />}
