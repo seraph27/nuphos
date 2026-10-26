@@ -1,6 +1,11 @@
 import { ObjectId } from 'mongodb'
 import { z } from 'zod'
 
+import { registerTeamAvatarRoutes } from './avatar'
+
+import type { TeamAuthVariables } from '@/middleware/auth'
+import type { Hono } from 'hono'
+
 import { revokeTeamBoxStreams } from '@/lib/agent/devices/box-access'
 import { revokeTeamMemberAccess } from '@/lib/agent/devices/local-share-revoke'
 import { OPENAB_PROVIDERS } from '@/lib/claude-code-preview/runtime-provider'
@@ -14,24 +19,10 @@ import {
   setTeamAgentRuntime,
   setTeamAllowedEmailDomains,
   transferTeamOwnership,
-  updateTeam,
   updateTeamMemberRole,
 } from '@/lib/identity'
 import { zv } from '@/lib/validate'
 import { requireTeamRole } from '@/middleware/auth'
-
-import type { TeamAuthVariables } from '@/middleware/auth'
-import type { Hono } from 'hono'
-
-const updateTeamSchema = z
-  .object({
-    name: z.string().trim().min(1).max(80).optional(),
-    avatarUrl: z.string().trim().max(2048).optional(),
-  })
-  .strict()
-  .refine((value) => value.name !== undefined || value.avatarUrl !== undefined, {
-    message: 'At least one field is required',
-  })
 
 const updateTeamMemberRoleSchema = z
   .object({
@@ -69,25 +60,7 @@ export function registerTeamManagementRoutes(teamScoped: Hono<{ Variables: TeamA
     })
   })
 
-  teamScoped.patch(
-    '/',
-    requireTeamRole('ADMINISTRATOR', 'EDITOR'),
-    zv('json', updateTeamSchema),
-    async (c) => {
-      const input = c.req.valid('json')
-      const team = await updateTeam(c.get('teamId'), c.get('userId'), input)
-
-      if (!team) {
-        throw new AppError(404, 'team_not_found', 'Team not found')
-      }
-
-      return c.json({
-        ...team,
-        isOwner: team.ownerID === c.get('userId'),
-        role: c.get('teamRole'),
-      })
-    },
-  )
+  registerTeamAvatarRoutes(teamScoped)
 
   teamScoped.put(
     '/agent-runtime',

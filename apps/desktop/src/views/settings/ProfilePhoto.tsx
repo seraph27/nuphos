@@ -5,6 +5,7 @@ import { useRef, useState } from 'react'
 import { api } from '../../api'
 import { Avatar } from '../../components/Avatar'
 import { Button } from '../../components/ui/button'
+import { toast } from '../../components/ui/toast'
 import { trustedAvatarURL } from '../../lib/avatarUrl'
 
 import { AvatarCropDialog } from './AvatarCropDialog'
@@ -23,7 +24,7 @@ function validatePhoto(file: File): string | null {
   return null
 }
 
-/** The profile avatar: click or drop an image to crop and upload it, or remove it. */
+/** Personal photo uses the same picker as workspace icons. */
 export function ProfilePhoto({
   user,
   displayName,
@@ -33,15 +34,46 @@ export function ProfilePhoto({
   displayName: string
   onUserUpdated: (user: UserInfo) => void
 }) {
+  return (
+    <PhotoUpload
+      imageURL={trustedAvatarURL(user.avatarURL)}
+      hasPhoto={Boolean(user.avatarURL)}
+      displayName={displayName}
+      onUpload={async (image) => onUserUpdated(await api.authUploadAvatar(image))}
+      onRemove={async () => onUserUpdated(await api.authRemoveAvatar())}
+    />
+  )
+}
+
+export function PhotoUpload({
+  imageURL,
+  hasPhoto,
+  displayName,
+  onUpload,
+  onRemove,
+  square = false,
+  disabled = false,
+  onBusyChange,
+}: {
+  imageURL: string | undefined
+  hasPhoto: boolean
+  displayName: string
+  onUpload: (image: Uint8Array) => Promise<void>
+  onRemove: () => Promise<void>
+  square?: boolean
+  disabled?: boolean
+  onBusyChange?: (busy: boolean) => void
+}) {
   const [photo, setPhoto] = useState<File | null>(null)
   const [photoBusy, setPhotoBusy] = useState(false)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
-  const avatarURL = user.avatarURL ?? ''
+  const unavailable = disabled || photoBusy
+  const rounded = square ? 'rounded-lg' : 'rounded-full'
 
   function pickPhoto(file: File | undefined) {
-    if (!file) return
+    if (!file || unavailable) return
     const problem = validatePhoto(file)
 
     setPhotoError(problem)
@@ -55,18 +87,25 @@ export function ProfilePhoto({
   }
 
   async function uploadPhoto(image: Uint8Array) {
-    onUserUpdated(await api.authUploadAvatar(image))
+    onBusyChange?.(true)
+    try {
+      await onUpload(image)
+    } finally {
+      onBusyChange?.(false)
+    }
   }
 
   async function removePhoto() {
     setPhotoBusy(true)
+    onBusyChange?.(true)
     setPhotoError(null)
     try {
-      onUserUpdated(await api.authRemoveAvatar())
+      await onRemove()
     } catch (err) {
-      setPhotoError(err instanceof Error ? err.message : 'Could not remove photo')
+      toast.apiError('Could not remove photo', err)
     } finally {
       setPhotoBusy(false)
+      onBusyChange?.(false)
     }
   }
 
@@ -76,7 +115,7 @@ export function ProfilePhoto({
         <button
           type="button"
           aria-label="Change photo"
-          disabled={photoBusy}
+          disabled={unavailable}
           onClick={() => fileInput.current?.click()}
           onDragOver={(event) => {
             event.preventDefault()
@@ -85,19 +124,21 @@ export function ProfilePhoto({
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
           className={clsx(
-            'group relative rounded-full outline-none focus-visible:ring-2 focus-visible:ring-zViolet-500',
+            'group relative outline-none focus-visible:ring-2 focus-visible:ring-zViolet-500',
+            rounded,
             dragging && 'ring-2 ring-zViolet-500 ring-offset-2 ring-offset-zGray-900',
           )}
         >
           <Avatar
-            src={trustedAvatarURL(avatarURL)}
+            src={imageURL}
             name={displayName}
             size={64}
-            className="rounded-full !shadow-none"
+            className={clsx(rounded, '!shadow-none')}
           />
           <span
             className={clsx(
-              'absolute inset-0 flex flex-col items-center justify-center gap-0.5 rounded-full bg-black/70 text-[10px] backdrop-blur-[2px] font-medium leading-tight text-white transition-opacity',
+              'absolute inset-0 flex flex-col items-center justify-center gap-0.5 bg-black/70 text-[10px] backdrop-blur-[2px] font-medium leading-tight text-white transition-opacity',
+              rounded,
               dragging
                 ? 'opacity-100'
                 : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100',
@@ -113,17 +154,17 @@ export function ProfilePhoto({
               type="button"
               size="sm"
               variant="secondary"
-              disabled={photoBusy}
+              disabled={unavailable}
               onClick={() => fileInput.current?.click()}
             >
               Upload photo
             </Button>
-            {avatarURL && (
+            {hasPhoto && (
               <Button
                 type="button"
                 size="sm"
                 variant="ghost"
-                disabled={photoBusy}
+                disabled={unavailable}
                 onClick={() => void removePhoto()}
               >
                 {photoBusy ? 'Removing…' : 'Remove photo'}
@@ -151,7 +192,12 @@ export function ProfilePhoto({
         </p>
       )}
       {photo && (
-        <AvatarCropDialog file={photo} onSave={uploadPhoto} onClose={() => setPhoto(null)} />
+        <AvatarCropDialog
+          square={square}
+          file={photo}
+          onSave={uploadPhoto}
+          onClose={() => setPhoto(null)}
+        />
       )}
     </>
   )

@@ -16,10 +16,12 @@ type Loaded = { url: string; width: number; height: number; image: HTMLImageElem
 /** Square crop for a picked photo; `onSave` receives the cropped 512px WebP. */
 export function AvatarCropDialog({
   file,
+  square = false,
   onSave,
   onClose,
 }: {
   file: File
+  square?: boolean
   onSave: (image: Uint8Array) => Promise<void>
   onClose: () => void
 }) {
@@ -133,7 +135,9 @@ export function AvatarCropDialog({
               {!loaded && !error && (
                 <Loader2 className="absolute inset-0 m-auto h-5 w-5 animate-spin text-tertiary" />
               )}
-              <div className="pointer-events-none absolute inset-0 rounded-full shadow-[0_0_0_999px_rgba(0,0,0,0.55)]" />
+              <div
+                className={`pointer-events-none absolute inset-0 shadow-[0_0_0_999px_rgba(0,0,0,0.55)] ${square ? 'rounded-lg' : 'rounded-full'}`}
+              />
             </div>
             <label className="flex items-center gap-2 text-tertiary">
               <ZoomOut className="h-3.5 w-3.5 shrink-0" />

@@ -1,4 +1,4 @@
-import { call } from './client'
+import { call, callMultipart } from './client'
 
 import type { AgentProvider } from '../../src/types/runtime'
 
@@ -128,6 +128,14 @@ export async function updateTeam(
   input: { name?: string; avatarUrl?: string },
 ): Promise<Team> {
   return call<Team>('PATCH', `/teams/${teamId}`, input, { retry: false })
+}
+
+export function uploadTeamAvatar(teamId: string, image: Uint8Array): Promise<Team> {
+  return callMultipart(
+    `/teams/${encodeURIComponent(teamId)}/avatar`,
+    {},
+    { filename: 'avatar.webp', bytes: image, contentType: 'image/webp' },
+  )
 }
 
 // Enables/disables workspace discovery for the acting admin's own email

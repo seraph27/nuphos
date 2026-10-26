@@ -87,6 +87,8 @@ export const teamApi = {
   atlasPutHomeLayout: (teamId: string, scope: 'personal' | 'team', layout: HomeLayout | null) =>
     window.api.atlasPutHomeLayout(teamId, scope, layout),
   atlasCreateTeam: (name: string) => window.api.atlasCreateTeam(name),
+  atlasUploadTeamAvatar: (teamId: string, image: Uint8Array) =>
+    window.api.atlasUploadTeamAvatar(teamId, image),
   atlasUpdateTeam: (teamId: string, input: { name?: string; avatarUrl?: string }) =>
     window.api.atlasUpdateTeam(teamId, input),
   atlasSetTeamEmailDomainDiscovery: (teamId: string, enabled: boolean) =>

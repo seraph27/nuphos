@@ -23,6 +23,7 @@ type SectionProps = {
 const SECTIONS: Partial<Record<string, (props: SectionProps) => ReactNode>> = {
   'workspace.general': ({ team, user, onTeamUpdated, onTeamRemoved }) => (
     <GeneralSection
+      key={team?.id}
       team={team}
       userEmail={user.email}
       onTeamUpdated={onTeamUpdated}

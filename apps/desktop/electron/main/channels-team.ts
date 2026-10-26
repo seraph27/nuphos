@@ -168,6 +168,8 @@ export const teamChannels = {
     atlas.dashboardsDeleteAlert(teamId, dashboardId, panelId),
   ...skillChannels,
   'atlas:createTeam': (_e: unknown, name: string) => atlas.createTeam(name),
+  'atlas:uploadTeamAvatar': (_e: unknown, teamId: string, image: Uint8Array) =>
+    atlas.uploadTeamAvatar(teamId, image),
   'atlas:updateTeam': (_e: unknown, teamId: string, input: { name?: string; avatarUrl?: string }) =>
     atlas.updateTeam(teamId, input),
   'atlas:setTeamEmailDomainDiscovery': (_e: unknown, teamId: string, enabled: boolean) =>

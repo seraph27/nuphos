@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import { Hono } from 'hono'
 
-import { errorHandler } from '@/lib/errors'
-import { useIdentity } from '@/lib/test/doubles/identity'
-
 import type { TransferTeamOwnershipResult } from '@/lib/identity/team-roles'
 import type { NuphosTeamMember } from '@/lib/identity/types'
 import type { TeamAuthVariables } from '@/middleware/auth'
+
+import { errorHandler } from '@/lib/errors'
+import { useIdentity } from '@/lib/test/doubles/identity'
 
 const MEMBER: NuphosTeamMember = {
   id: 'member-1',
@@ -43,13 +43,13 @@ useIdentity({
 
 const { registerTeamManagementRoutes } = await import('./management')
 
-function createApp(teamId = 'team-1') {
+function createApp(teamId = 'team-1', role: TeamAuthVariables['teamRole'] = 'ADMINISTRATOR') {
   const app = new Hono<{ Variables: TeamAuthVariables }>()
 
   app.onError(errorHandler)
   app.use('*', async (c, next) => {
     c.set('teamId', teamId)
-    c.set('teamRole', 'ADMINISTRATOR')
+    c.set('teamRole', role)
     await next()
   })
   registerTeamManagementRoutes(app)
@@ -107,5 +107,38 @@ describe('POST /transfer-ownership', () => {
 
   test('rejects a malformed userId', async () => {
     expect((await transfer('not-an-id')).status).toBe(400)
+  })
+})
+
+describe('POST /avatar', () => {
+  test('viewers cannot upload a workspace icon', async () => {
+    const response = await createApp('team-1', 'VIEWER').request('/avatar', { method: 'POST' })
+
+    expect(response.status).toBe(403)
+  })
+  test('editors must provide an image file', async () => {
+    const response = await createApp('team-1', 'EDITOR').request('/avatar', {
+      method: 'POST',
+      body: new FormData(),
+    })
+
+    expect(response.status).toBe(400)
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      'invalid_avatar_image',
+    )
+  })
+  test('oversized request bodies return a structured 413', async () => {
+    const form = new FormData()
+
+    form.set(
+      'file',
+      new File([new Uint8Array(2 * 1024 * 1024 + 32_768)], 'large.png', { type: 'image/png' }),
+    )
+    const response = await createApp().request('/avatar', { method: 'POST', body: form })
+
+    expect(response.status).toBe(413)
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      'avatar_too_large',
+    )
   })
 })

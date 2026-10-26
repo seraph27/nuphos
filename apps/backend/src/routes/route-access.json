@@ -693,6 +693,7 @@
   "POST /teams/:teamId/aliyun-accounts": "admin",
   "POST /teams/:teamId/architecture-diagrams": "editor",
   "POST /teams/:teamId/asana-accounts/start-oauth": "admin",
+  "POST /teams/:teamId/avatar": "editor",
   "POST /teams/:teamId/aws-accounts": "admin",
   "POST /teams/:teamId/aws-accounts/:accountId/ec2-instances/:instanceId/ssh-access": "admin",
   "POST /teams/:teamId/aws-accounts/:accountId/lambda-functions/function/invoke": "admin",

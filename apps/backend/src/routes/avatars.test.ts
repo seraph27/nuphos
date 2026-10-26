@@ -4,6 +4,9 @@ import { beforeEach, expect, test } from 'bun:test'
 import { Hono } from 'hono'
 import { ObjectId } from 'mongodb'
 
+import type { AuthVariables } from '@/middleware/auth'
+import type { Context, Next } from 'hono'
+
 import { config } from '@/config'
 import { errorHandler } from '@/lib/errors'
 import { deleteUserAvatars, storeAvatar } from '@/lib/identity/avatar-upload'
@@ -13,15 +16,13 @@ import { useDb } from '@/lib/test/doubles/db'
 import { auth } from '@/routes/auth'
 import { avatarsRoutes } from '@/routes/avatars'
 
-import type { AuthVariables } from '@/middleware/auth'
-import type { Context, Next } from 'hono'
-
 type Doc = Record<string, unknown>
 
 const userId = new ObjectId()
 let usersById: Map<string, Doc>
 let avatars: Doc[]
 let agentTokens: Doc[] = []
+let teamDocs: Doc[] = []
 // When set, the next users write waits on it: lets a test interleave two requests.
 let gate: Promise<void> | null = null
 // When set, the next user_avatars prune waits on it, after it chose what to keep.
@@ -108,6 +109,13 @@ function collection(name: string) {
     }
   }
 
+  if (name === 'teams') {
+    return {
+      findOne: (filter: Doc) =>
+        Promise.resolve(teamDocs.find((doc) => matches(doc, filter)) ?? null),
+    }
+  }
+
   if (name === 'cli_tokens') {
     return {
       findOne: (filter: Doc) =>
@@ -160,6 +168,7 @@ beforeEach(() => {
   ])
   avatars = []
   agentTokens = []
+  teamDocs = []
   gate = null
   pruneGate = null
   pruneWaiting = false
@@ -414,5 +423,33 @@ test("an agent token's photo is served only while it is the token's avatar", asy
   expect((await app.request(pathOf(url))).status).toBe(200)
   // A personal token has no avatar of its own to serve.
   agentTokens = [{ _id: tokenId, kind: 'personal', avatarUrl: url }]
+  expect((await app.request(pathOf(url))).status).toBe(404)
+})
+
+test('workspace photos follow the current icon and stop serving after removal or team deletion', async () => {
+  const teamId = new ObjectId()
+  const url = await storeAvatar(teamId.toHexString(), png(64, 64))
+
+  expect((await app.request(pathOf(url))).status).toBe(404)
+  teamDocs = [{ _id: teamId, avatarUrl: url }]
+  expect((await app.request(pathOf(url))).status).toBe(200)
+  const next = await storeAvatar(teamId.toHexString(), png(32, 32))
+
+  teamDocs[0]!.avatarUrl = next
+  expect((await app.request(pathOf(url))).status).toBe(404)
+  expect((await app.request(pathOf(next))).status).toBe(200)
+  teamDocs[0]!.avatarUrl = ''
+  expect((await app.request(pathOf(next))).status).toBe(404)
+  teamDocs[0]!.avatarUrl = next
+  teamDocs[0]!.deletedAt = new Date()
+  expect((await app.request(pathOf(next))).status).toBe(404)
+})
+
+test('a workspace cannot serve another owner’s uploaded photo', async () => {
+  const teamId = new ObjectId()
+  const other = new ObjectId()
+  const url = await storeAvatar(other.toHexString(), png(64, 64))
+
+  teamDocs = [{ _id: teamId, avatarUrl: url }]
   expect((await app.request(pathOf(url))).status).toBe(404)
 })

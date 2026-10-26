@@ -4,13 +4,13 @@ import clsx from 'clsx'
 import { useState } from 'react'
 
 import { api } from '../../api'
-import { Avatar } from '../../components/Avatar'
 import { Button } from '../../components/ui/button'
 import { toast } from '../../components/ui/toast'
 
 import { AllowedEmailDomainCard } from './AllowedEmailDomainCard'
-import { LocalAgentSharingCeilingCard } from './LocalAgentSharingCeilingCard'
 import { DangerZone } from './DangerZone'
+import { LocalAgentSharingCeilingCard } from './LocalAgentSharingCeilingCard'
+import { PhotoUpload } from './ProfilePhoto'
 import { Field, SectionHeader } from './shared'
 import { inputClasses } from './styles'
 
@@ -65,7 +65,10 @@ export function GeneralSection({
 }) {
   const [name, setName] = useState(team?.name ?? '')
   const [icon, setIcon] = useState(team?.avatarUrl ?? '')
+  const [photoBusy, setPhotoBusy] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  const canEdit = team?.isOwner || team?.role === 'ADMINISTRATOR' || team?.role === 'EDITOR'
 
   const dirty = team
     ? name.trim() !== (team.name ?? '') || icon.trim() !== (team.avatarUrl ?? '')
@@ -75,7 +78,7 @@ export function GeneralSection({
     e.preventDefault()
     const trimmedName = name.trim()
 
-    if (!team || !trimmedName || submitting) return
+    if (!team || !trimmedName || submitting || photoBusy) return
     setSubmitting(true)
     try {
       const updated = await api.atlasUpdateTeam(team.id, {
@@ -98,13 +101,26 @@ export function GeneralSection({
       {team ? (
         <>
           <form onSubmit={(e) => void submit(e)} className="space-y-5">
-            <div className="flex items-center gap-4">
-              <Avatar
-                key={`${team.id}:${icon}`}
-                src={icon}
-                name={name || team.name || 'Workspace'}
-                size={56}
-                className="rounded-lg !shadow-none"
+            <div className="flex flex-wrap items-center gap-4">
+              <PhotoUpload
+                square
+                imageURL={icon || undefined}
+                hasPhoto={Boolean(icon)}
+                displayName={name || team.name}
+                disabled={!canEdit || submitting}
+                onBusyChange={setPhotoBusy}
+                onUpload={async (image) => {
+                  const updated = await api.atlasUploadTeamAvatar(team.id, image)
+
+                  setIcon(updated.avatarUrl ?? '')
+                  onTeamUpdated(updated)
+                }}
+                onRemove={async () => {
+                  const updated = await api.atlasUpdateTeam(team.id, { avatarUrl: '' })
+
+                  setIcon('')
+                  onTeamUpdated(updated)
+                }}
               />
               <div className="min-w-0">
                 <div className="text-[14px] font-medium text-main truncate">
@@ -128,6 +144,7 @@ export function GeneralSection({
             <Field label="Icon URL" hint="A square image works best.">
               <input
                 type="url"
+                disabled={submitting || photoBusy}
                 value={icon}
                 onChange={(e) => setIcon(e.target.value)}
                 placeholder="https://example.com/icon.png"
@@ -136,7 +153,11 @@ export function GeneralSection({
             </Field>
 
             <div className="flex justify-end pt-1">
-              <Button size="sm" type="submit" disabled={!name.trim() || !dirty || submitting}>
+              <Button
+                size="sm"
+                type="submit"
+                disabled={!name.trim() || !dirty || submitting || photoBusy}
+              >
                 {submitting ? 'Saving…' : 'Save changes'}
               </Button>
             </div>

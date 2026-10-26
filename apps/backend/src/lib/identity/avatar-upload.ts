@@ -2,13 +2,13 @@ import { createHash } from 'node:crypto'
 
 import { Binary, ObjectId } from 'mongodb'
 
+import { hostedAvatarOwner, hostedAvatarPath } from './avatar-url'
+import { users, mapUser, teams } from './shared'
+
 import { config } from '@/config'
 import { upsertCachedUser } from '@/lib/agent/directory'
 import { db } from '@/lib/db'
 import { AppError } from '@/lib/errors'
-
-import { hostedAvatarOwner, hostedAvatarPath } from './avatar-url'
-import { users, mapUser } from './shared'
 
 export const MAX_AVATAR_UPLOAD_BYTES = 2 * 1024 * 1024
 export const AVATAR_SIZE = 256
@@ -48,7 +48,7 @@ export async function renderAvatar(input: Uint8Array): Promise<Uint8Array> {
 }
 
 /**
- * Stores the photo for `ownerId` (a user, or an agent token) and returns the
+ * Stores the photo for `ownerId` (a user, agent token or workspace) and returns the
  * URL that will serve it once the owner's document points at it.
  */
 export async function storeAvatar(ownerId: string, input: Uint8Array): Promise<string> {
@@ -136,7 +136,7 @@ async function deletionPending(userId: string): Promise<boolean> {
 
 /**
  * The image hash in the owner's current avatar URL, if it is one this backend
- * serves. The owner is a user or, failing that, an agent token.
+ * serves. The owner is a user, agent token or workspace.
  */
 async function currentAvatarHash(_id: ObjectId): Promise<string | null> {
   const user = await users().findOne(
@@ -148,7 +148,14 @@ async function currentAvatarHash(_id: ObjectId): Promise<string | null> {
     : await db()
         .collection<{ _id: ObjectId; avatarUrl?: string }>('cli_tokens')
         .findOne({ _id, kind: 'agent' }, { projection: { avatarUrl: 1 } })
-  const owned = user ? user.avatarURL : agent?.avatarUrl
+  const team =
+    user || agent
+      ? null
+      : await teams().findOne(
+          { _id, deletedAt: { $exists: false } },
+          { projection: { avatarUrl: 1 } },
+        )
+  const owned = user?.avatarURL ?? agent?.avatarUrl ?? team?.avatarUrl
   const url = typeof owned === 'string' ? owned : ''
 
   return url && hostedAvatarOwner(url) === _id.toHexString()
