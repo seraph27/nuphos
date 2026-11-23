@@ -66,6 +66,7 @@ export function ModelEffortPanel({
   fast,
   blocked,
   saving,
+  optimistic = false,
   sliderRef,
   onSelect,
 }: {
@@ -73,8 +74,10 @@ export function ModelEffortPanel({
   fast?: SessionConfigOption
   /** No changes at all, e.g. the agent is offline. */
   blocked: boolean
-  /** A change is being saved; the slider is disabled until it ends. */
+  /** A change is being saved; the toggles, and the slider unless it is an effort, wait for it. */
   saving: boolean
+  /** The change being saved is an effort pick, which another pick can replace. */
+  optimistic?: boolean
   sliderRef?: React.Ref<HTMLInputElement>
   onSelect: (configId: string, value: string) => void
 }) {
@@ -165,8 +168,8 @@ export function ModelEffortPanel({
           max={Math.max(stops.length - 1, 1)}
           step={1}
           thumbAlignment="edge"
-          // A session ignores writes while one is saving, so hold the slider still.
-          disabled={blocked || saving || stops.length < 2}
+          // Effort writes coalesce; model and fast-mode writes still wait for confirmation.
+          disabled={blocked || (saving && !optimistic) || stops.length < 2}
           onValueChange={(value) => setDraft({ index: value, from: currentValue })}
           onValueCommitted={(value) => {
             const stop = stops[value]

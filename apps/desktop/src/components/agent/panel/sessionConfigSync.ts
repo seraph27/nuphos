@@ -8,6 +8,7 @@ type Transport = {
   write: (selection: SessionConfigSelection) => Promise<SessionConfigState>
 }
 export type ConfigSnapshot = {
+  optimistic?: SessionConfigSelection
   queued?: SessionConfigSelection[]
   data?: SessionConfigState
   loading: boolean
@@ -26,6 +27,7 @@ export class SessionConfigSync {
   private streaming = false
   private active = false
   private version = 0
+  private pendingEffort?: SessionConfigSelection
   private pending = false
   private failures = 0
   private poll?: ReturnType<typeof setTimeout>
@@ -57,6 +59,8 @@ export class SessionConfigSync {
       this.active = false
       ++this.version
       this.pending = false
+      this.pendingEffort = undefined
+      this.publish({ saving: false, optimistic: undefined })
       clearTimeout(this.poll)
       clearTimeout(this.slowTimer)
     }
@@ -160,8 +164,20 @@ export class SessionConfigSync {
   }
 
   async select(selection: SessionConfigSelection) {
+    const option = this.snapshot.data?.options.find((value) => value.id === selection.configId)
+    const effort = option?.kind === 'effort'
+
+    if (effort && !option.options.some((value) => value.value === selection.value)) return
+    // Effort picks made while one is saving replace each other; the last one is written next.
+    if (this.active && effort && this.snapshot.saving && this.snapshot.optimistic) {
+      this.pendingEffort = selection
+      this.publish({ optimistic: selection })
+
+      return
+    }
     if (this.active && (this.streaming || this.snapshot.data?.status === 'busy')) {
       this.publish({
+        optimistic: undefined,
         queued: [
           ...(this.snapshot.queued ?? []).filter(
             (pending) => pending.configId !== selection.configId,
@@ -185,19 +201,35 @@ export class SessionConfigSync {
     clearTimeout(this.slowTimer)
     this.pending = false
     // A fresh pick retires the last refusal's reason alongside the connection note.
-    this.publish({ saving: true, slow: false, error: undefined, writeError: undefined })
+    // An offered effort shows at once; a model or fast change waits for its acknowledgement.
+    this.publish({
+      saving: true,
+      slow: false,
+      error: undefined,
+      writeError: undefined,
+      optimistic: effort ? selection : undefined,
+    })
     try {
       const data = await bounded(this.transport.write(selection), 40_000)
 
       if (this.active && version === this.version) this.publish({ data, loading: false })
     } catch (error) {
       if (this.active && version === this.version)
-        this.publish({ queued: undefined, writeError: writeFailure(error) })
+        this.publish({ queued: undefined, optimistic: undefined, writeError: writeFailure(error) })
     } finally {
       if (this.active && version === this.version) {
-        this.publish({ saving: false })
-        // Read back what the runtime holds, e.g. after a failed or lost acknowledgement.
-        void this.refresh()
+        const next = this.snapshot.writeError ? undefined : this.pendingEffort
+
+        this.pendingEffort = undefined
+        this.publish({ saving: false, optimistic: next })
+        const current = this.snapshot.data.options.find((held) => held.id === next?.configId)
+
+        if (next && current?.currentValue !== next.value) void this.select(next)
+        else {
+          this.publish({ optimistic: undefined })
+          // Read back what the runtime holds, e.g. after a failed or lost acknowledgement.
+          void this.refresh()
+        }
       }
     }
   }

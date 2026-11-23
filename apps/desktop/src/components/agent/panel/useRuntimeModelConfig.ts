@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../../../api'
 import { t } from '../../../i18n/index.ts'
 
+import { optimisticEffort } from './optimisticEffort'
 import { refreshLocalModels } from './refreshLocalModels'
 
 import type { ModelControl } from './ModelSelector'
@@ -60,6 +61,7 @@ export function useRuntimeModelConfig(
     saving: Boolean(shown) && pending,
     error: pending ? undefined : shown?.error,
     queued: undefined,
+    optimistic: pending ? optimisticEffort(shown?.data, pick) : undefined,
     open,
     setOpen: (next: boolean) => {
       setOpen(next)

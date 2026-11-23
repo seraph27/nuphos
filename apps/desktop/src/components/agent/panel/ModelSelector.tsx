@@ -27,7 +27,16 @@ import type { useSessionConfig } from './useSessionConfig'
 
 export type ModelControl = Pick<
   ReturnType<typeof useSessionConfig>,
-  'data' | 'loading' | 'slow' | 'saving' | 'error' | 'writeError' | 'queued' | 'open' | 'select'
+  | 'data'
+  | 'loading'
+  | 'slow'
+  | 'saving'
+  | 'error'
+  | 'writeError'
+  | 'queued'
+  | 'optimistic'
+  | 'open'
+  | 'select'
 > & { setOpen: (open: boolean) => void; refresh: () => void }
 
 function chipLabel(name: string, fast: string | undefined) {
@@ -60,13 +69,18 @@ export function ModelSelector({
   const sliderRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const options = data?.options.map((option) => {
-    const queued = control.queued?.find((selection) => selection.configId === option.id)
+    const queued =
+      control.optimistic?.configId === option.id
+        ? control.optimistic
+        : control.queued?.find((selection) => selection.configId === option.id)
 
     return queued ? { ...option, currentValue: queued.value } : option
   })
   const model = options?.find((option) => option.kind === 'model')
   const effort = options?.find((option) => option.kind === 'effort')
   const fast = options?.find((option) => option.kind === 'fast')
+  // The change being saved is an effort level already on screen.
+  const savingEffort = Boolean(effort) && control.optimistic?.configId === effort?.id
   const status = data?.status
   const busy = status === 'busy'
   let name = slow ? t('Connecting…') : t('Model settings')
@@ -78,7 +92,9 @@ export function ModelSelector({
     ...new Set([level, ...effortStops(effort?.options ?? []).map((choice) => effortLabel(choice))]),
   ].filter(Boolean)
   const blocked =
-    disabled || saving || (status !== 'ready' && status !== 'dormant' && status !== 'busy')
+    disabled ||
+    (saving && !savingEffort) ||
+    (status !== 'ready' && status !== 'dormant' && status !== 'busy')
   const hint = modelHint(status, Boolean(model), busy, Boolean(effort || fast), data?.reason)
 
   const setOpen = control.setOpen
@@ -189,7 +205,7 @@ export function ModelSelector({
         <SummaryMenuRow
           aria-label={chipLabel([name, level].filter(Boolean).join(' '), fast?.currentValue)}
           icon={
-            saving ? (
+            saving && !savingEffort ? (
               <Loader2 className="size-3.5 animate-spin" />
             ) : (
               <Cpu className="size-3.5" strokeWidth={1.8} />
@@ -211,6 +227,7 @@ export function ModelSelector({
           <MenuTrigger
             ref={chipRef}
             data-model-chip=""
+            aria-busy={saving || undefined}
             aria-label={chipLabel([name, level].filter(Boolean).join(' '), fast?.currentValue)}
             // A filled pill at rest, so opening it changes nothing but the text.
             className={clsx(
@@ -218,7 +235,7 @@ export function ModelSelector({
               'flex min-w-0 max-w-64 items-center gap-1 rounded-full px-2 text-[13px] text-main outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover',
             )}
           >
-            {saving && <Loader2 className="h-3 w-3 shrink-0 animate-spin" />}
+            {saving && !savingEffort && <Loader2 className="h-3 w-3 shrink-0 animate-spin" />}
             <ModelChipLabel
               name={name}
               level={level}
@@ -248,6 +265,7 @@ export function ModelSelector({
                   fast={fast}
                   blocked={blocked && !saving}
                   saving={saving}
+                  optimistic={savingEffort}
                   sliderRef={sliderRef}
                   onSelect={select}
                 />
@@ -266,7 +284,7 @@ export function ModelSelector({
           </>
         }
       >
-        {model && <ModelMenu model={model} blocked={blocked} onSelect={pickModel} />}
+        {model && <ModelMenu model={model} blocked={blocked || saving} onSelect={pickModel} />}
       </MenuPanel>
     </Menu>
   )
